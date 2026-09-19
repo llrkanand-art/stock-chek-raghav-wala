@@ -7,6 +7,37 @@ const { isAllowed } = require('../lib/access');
 
 const list = value => Array.isArray(value) ? value : (value ? [value] : []);
 const reply = (res, status, body) => res.status(status).json(body);
+let cromaCookie = '';
+let cromaCookieExpiresAt = 0;
+let cromaCookiePromise = null;
+
+function cookieHeader(headers) {
+  const values = typeof headers.getSetCookie === 'function'
+    ? headers.getSetCookie()
+    : String(headers.get('set-cookie') || '').split(/,(?=[^;=]+=)/);
+  return values.map(value => value.split(';', 1)[0]).filter(Boolean).join('; ');
+}
+
+async function getCromaCookie(force = false) {
+  if (!force && cromaCookie && cromaCookieExpiresAt > Date.now()) return cromaCookie;
+  if (cromaCookiePromise) return cromaCookiePromise;
+
+  cromaCookiePromise = fetch('https://www.croma.com/', {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36'
+    }
+  }).then(response => {
+    const cookie = cookieHeader(response.headers);
+    cromaCookie = cookie;
+    cromaCookieExpiresAt = cookie ? Date.now() + 10 * 60 * 1000 : 0;
+    return cookie;
+  }).catch(() => '').finally(() => {
+    cromaCookiePromise = null;
+  });
+
+  return cromaCookiePromise;
+}
 
 function line(type, itemID, pincode, categoryType) {
   return { fulfillmentType:type, mch:'', itemID, lineId:type === 'HDEL' ? '1' : '3', categoryType,
@@ -98,7 +129,18 @@ async function productInfo(productId) {
 
 async function inventory(job, category) {
   try {
-    const response = await fetch(INVENTORY_API, { method:'POST', headers:{Accept:'application/json, text/plain, */*','Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',Origin:'https://www.croma.com',Referer:'https://www.croma.com/'}, body:JSON.stringify(body(job.productId,job.pincode,category)) });
+    const request = cookie => fetch(INVENTORY_API, {
+      method:'POST',
+      headers:{Accept:'application/json, text/plain, */*','Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',Origin:'https://www.croma.com',Referer:'https://www.croma.com/',...(cookie ? { Cookie: cookie } : {})},
+      body:JSON.stringify(body(job.productId,job.pincode,category))
+    });
+    let response = await request(await getCromaCookie());
+    if (response.status === 403) {
+      await response.arrayBuffer().catch(() => {});
+      cromaCookie = '';
+      cromaCookieExpiresAt = 0;
+      response = await request(await getCromaCookie(true));
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`Croma inventory request failed (${response.status}).`);
     return { ...job, ...inventorySummary(data) };
