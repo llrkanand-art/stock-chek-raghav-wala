@@ -11,5 +11,9 @@ module.exports = async function handler(req, res) {
   const deviceId = String(req.body?.deviceId || '').trim();
   if (!deviceId) return reply(res, 400, { error: 'Device ID is required.' });
   const device = findDevice(deviceId);
-  return reply(res, 200, { allowed: Boolean(device), deviceId, name: typeof device === 'object' ? (device.name || '') : '' });
+  return reply(res, 200, {
+    allowed: Boolean(device),
+    deviceId,
+    name: device && typeof device === 'object' ? (device.name || '') : ''
+  });
 };
