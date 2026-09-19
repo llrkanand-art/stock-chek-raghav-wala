@@ -1,0 +1,14 @@
+{
+  "name": "croma-stock-signal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Croma stock checker PWA and API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check api/license.js && node --check api/stock.js && node --check lib/access.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
